@@ -15,118 +15,15 @@ from typing import Any, Iterable, List, Optional, Union, cast
 from copy import deepcopy
 import numpy as np
 from qiskit import transpile
-from qiskit.circuit import Parameter, QuantumCircuit, QuantumRegister
+from qiskit.circuit import QuantumCircuit, QuantumRegister
 from qiskit.circuit.library import IGate, XGate, YGate, ZGate, CXGate, RZGate
 from qiskit.converters import circuit_to_dag, dag_to_circuit
 from qiskit.dagcircuit import DAGCircuit, DAGNode, DAGOpNode
-from qiskit.opflow import I, X, Z, OperatorBase, SummedOp
 from qiskit.providers.backend import Backend
 from qiskit.transpiler.basepasses import TransformationPass
 from qiskit.transpiler.passes import ALAPSchedule
 from qiskit.transpiler import PassManager
-from qiskit_research.utils import get_instruction_durations
-
-def build_resonance_ham(h0: OperatorBase, coupling_param: Parameter, energy_param: Parameter) -> SummedOp:
-    nq = h0.num_qubits
-    h_jw = []
-    for pop in h0:
-        #for pop in op:
-        h_jw.append((pop^I).to_pauli_op())
-    oplist = [-0.5*energy_param*((I^(nq))^Z), coupling_param*((I^(nq-1))^X^X)]
-    oplist += h_jw
-    return SummedOp(oplist)
-
-def get_zz_temp_sub() -> QuantumCircuit:
-    rzx_dag = circuit_to_dag(deepcopy(rzx_templates.rzx_templates(['zz3'])['template_list'][0]))
-    temp_cx1_node = rzx_dag.front_layer()[0]
-    for gp in rzx_dag.bfs_successors(temp_cx1_node):
-        if gp[0] == temp_cx1_node:
-            if isinstance(gp[1][0].op, CXGate) and isinstance(gp[1][1].op, RZGate):
-                temp_rz_node = gp[1][1]
-                temp_cx2_node = gp[1][0]
-
-                rzx_dag.remove_op_node(temp_cx1_node)
-                rzx_dag.remove_op_node(temp_rz_node)
-                rzx_dag.remove_op_node(temp_cx2_node)
-
-    return dag_to_circuit(rzx_dag).inverse()
-
-def sub_zz_in_dag(dag: DAGCircuit, cx1_node: DAGNode, rz_node: DAGNode, cx2_node: DAGNode) -> DAGCircuit:
-    zz_temp_sub = get_zz_temp_sub().assign_parameters({get_zz_temp_sub().parameters[0]: rz_node.op.params[0]})
-    dag.remove_op_node(rz_node)
-    dag.remove_op_node(cx2_node)
-
-    qr = QuantumRegister(2, 'q')
-    mini_dag = DAGCircuit()
-    mini_dag.add_qreg(qr)
-    for idx, (instr, qargs, cargs) in enumerate(zz_temp_sub.data):
-        mini_dag.apply_operation_back(instr, qargs=qargs)
-
-    dag.substitute_node_with_dag(node=cx1_node, input_dag=mini_dag, wires=[qr[0], qr[1]])
-    return dag
-
-def forced_zz_temp_sub(dag: DAGCircuit) -> DAGCircuit:
-    cx_runs = dag.collect_runs('cx')
-    for run in cx_runs:
-        cx1_node = run[0]
-        gp = next(dag.bfs_successors(cx1_node))
-        if isinstance(gp[0].op, CXGate): # dunno why this is needed
-            if isinstance(gp[1][0], DAGOpNode) and isinstance(gp[1][1], DAGOpNode):
-                if isinstance(gp[1][0].op, CXGate) and isinstance(gp[1][1].op, RZGate):
-                    rz_node = gp[1][1]
-                    cx2_node = gp[1][0]
-                    gp1 = next(dag.bfs_successors(rz_node))
-                    if cx2_node in gp1[1]:
-                        if ((cx1_node.qargs[0].index == cx2_node.qargs[0].index) and
-                            (cx1_node.qargs[1].index == cx2_node.qargs[1].index) and
-                            (cx2_node.qargs[1].index == rz_node.qargs[0].index)):
-
-                            dag = sub_zz_in_dag(dag, cx1_node, rz_node, cx2_node)
-
-    return dag
-
-def combine_runs(dag: DAGNode, gate_str: str) -> DAGCircuit:
-    runs = dag.collect_runs([gate_str])
-    for run in runs:
-        partition = []
-        chunk = []
-        for ii in range(len(run)-1):
-            chunk.append(run[ii])
-
-            qargs0 = run[ii].qargs
-            qargs1 = run[ii+1].qargs
-
-            if qargs0 != qargs1:
-                partition.append(chunk)
-                chunk = []
-
-        chunk.append(run[-1])
-        partition.append(chunk)
-
-        # simplify each chunk in the partition
-        for chunk in partition:
-            theta = 0
-            for ii in range(len(chunk)):
-                theta += chunk[ii].op.params[0]
-
-            # set the first chunk to sum of params
-            chunk[0].op.params[0] = theta
-
-            # remove remaining chunks if any
-            if len(chunk) > 1:
-                for nn in chunk[1:]:
-                    dag.remove_op_node(nn)
-    return dag
-
-def get_avg_gate_error(backend: Backend, initial_layout: List[int]) -> float:
-    avg_gate_error = 0
-    for ii in range(len(initial_layout)-1):
-        q0 = initial_layout[ii]
-        q1 = initial_layout[ii+1]
-        avg_gate_error += backend.properties().gate_property('cx')[(q0, q1)]['gate_error'][0]
-
-    avg_gate_error /= len(initial_layout)-1
-    return avg_gate_error
+# from qiskit_research.utils import get_instruction_durations
 
 def stringify(param_bind: dict) -> dict:
     param_bind_str = {}

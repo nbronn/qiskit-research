@@ -112,6 +112,7 @@ class BindParameters(TransformationPass):
         dag: DAGCircuit,
     ) -> DAGCircuit:
         # TODO: Must this convert the DAG back to a QuantumCircuit?
+        import pdb; pdb.set_trace()
         circuit = dag_to_circuit(dag)
         circuit.assign_parameters(self._param_bind, inplace=True)
         return circuit_to_dag(circuit)
