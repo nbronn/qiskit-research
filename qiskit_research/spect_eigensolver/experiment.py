@@ -11,9 +11,11 @@
 # that they have been altered from the originals.
 
 from ast import Param
+from ctypes import c_size_t
 from typing import List, Optional, Union
 
 from qiskit.circuit import ClassicalRegister, Parameter, QuantumCircuit, QuantumRegister
+from qiskit.circuit.parametertable import ParameterView
 from qiskit.converters import circuit_to_dag
 from qiskit.opflow import I, X, Z, OperatorBase, SummedOp
 from qiskit.providers.backend import Backend
@@ -23,6 +25,13 @@ from qiskit_research.spect_eigensolver.utils import stringify
 import numpy as np
 
 def build_resonance_ham(h0: OperatorBase, coupling_param: Parameter, energy_param: Parameter) -> SummedOp:
+    """
+    Builds a resonance Hamiltonian from a model Pauli Hamiltonian
+    coupled to probe qubit 0 with coupling coupling_param via
+    H_res = -0.5*ww*Z0 + H_model + c*X1*X0
+    where c is coupling_param and ww is energy_param and the 
+    model is probed on qubit 1.
+    """
     nq = h0.num_qubits
     h_jw = []
     for pop in h0:
@@ -42,22 +51,16 @@ def build_sweep(
     my_layout = get_layout(trot_unit)
     qr = QuantumRegister(len(my_layout), 'q')
     cr = ClassicalRegister(1, 'c')
-    cc = Parameter('c')
-    tt = Parameter('t')
-    ww = Parameter('ω')
     circs_w = []
     for sparam in sweep_range:
         (model_params, exp_str) = set_missing_param(model_params, sparam)
-        param_bind = invert_params(model_params)
-        param_bind[cc] = model_params['c_set']
-        param_bind[tt] = model_params['dt_set'] # unit of each time step
         num_steps = int(model_params['t_set']/model_params['dt_set'])
-
         for w_set in energy_range:
-            param_bind[ww] = w_set
+            model_params['w_set'] = w_set
+            param_bind = invert_params(trot_unit.parameters, model_params)
             metadata_circ = {
                 'experiment': exp_str,
-                'layout': my_layout, # TODO: extract this from base circuit
+                'layout': my_layout,
                 'trotter': num_steps,
                 **param_bind,
             }
@@ -71,6 +74,8 @@ def build_sweep(
                 circs_w.append(circ.bind_parameters(param_bind))
             else:
                 circs_w.append(attach_cr_pulses(circ, backend, param_bind))
+
+        del model_params[exp_str.split('_')[0] + '_set']
 
     return circs_w
 
@@ -109,14 +114,27 @@ def set_missing_param(model_params: dict, param: float):
 
     return (model_params, exp_str)
 
-def invert_params(model_params: dict) -> dict:
-    TT = Parameter('T')
-    DD = Parameter('Δ')
-    UU = Parameter('U')
-    mu = Parameter('μ')
+def invert_params(circ_params: ParameterView, model_params: dict) -> dict:
     T_set = model_params['x_set'] + model_params['y_set']
     D_set = model_params['x_set'] - model_params['y_set']
     U_set = 4*model_params['z_set']
     mu_set = -2*(model_params['m_set'] + model_params['z_set'])
-    
-    return {TT: T_set, DD: D_set, UU: U_set, mu: mu_set}
+
+    param_bind = {}
+    for cparam in circ_params:
+        if cparam.name == 'ω':
+            param_bind[cparam] = model_params['w_set']
+        elif cparam.name == 'T':
+            param_bind[cparam] = T_set
+        elif cparam.name == 'Δ':
+            param_bind[cparam] = D_set
+        elif cparam.name == 'U':
+            param_bind[cparam] = U_set
+        elif cparam.name == 'μ':
+            param_bind[cparam] = mu_set
+        elif cparam.name == 'c':
+            param_bind[cparam] = model_params['c_set']
+        elif cparam.name == 't':
+            param_bind[cparam] = model_params['dt_set'] # unit of each time step
+
+    return param_bind
