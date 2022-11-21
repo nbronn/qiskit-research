@@ -9,8 +9,11 @@
 # Any modifications or derivative works of this code must retain this
 # copyright notice, and modified files need to carry a notice indicating
 # that they have been altered from the originals.
+
 """
-===============
-Qiskit Research
-===============
+====================================
+Spectroscopic eigensolver experiment
+====================================
 """
+
+from qiskit_research.spect_eigensolver.experiment import build_resonance_ham
