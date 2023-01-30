@@ -70,6 +70,19 @@ def cr_forward_direction(
 
     raise ValueError(f"Qubits {control} and {target} are not a cross resonance pair.")
 
+def get_ecr_pairs_from_backend(backend: Backend) -> List[List[int]]:
+    coupling_map = backend.configuration().coupling_map
+    inst_sched_map = backend.defaults().instruction_schedule_map
+
+    ecr_pairs = []
+    for pair in coupling_map:
+        cx_sched = inst_sched_map.get("cx", qubits=pair)
+        if len(cx_sched.filter(channels=[ControlChannel(i) for i in range(backend.configuration().n_uchannels)], 
+            instruction_types=Play)) == 2:
+            ecr_pairs.append(pair)
+
+    return ecr_pairs
+
 
 class RZXtoEchoedCR(TransformationPass):
     """
