@@ -52,6 +52,14 @@ from qiskit_research.utils.periodic_dynamical_decoupling import (
     PeriodicDynamicalDecoupling,
 )
 
+from qiskit_research.utils.circuit_layering import (
+    get_entanglement_map,
+    FindBlockTrotterEvolution,
+    AddBarriersForGroupOfLayers,
+    ExpandBlockOperators,
+    LayerBlockOperators,
+)
+
 __all__ = [
     "get_backend",
     "convert_list_map_to_dict",
@@ -75,5 +83,10 @@ __all__ = [
     "pulse_attaching_passes",
     "PauliTwirl",
     "pauli_transpilation_passes",
+    "get_entanglement_map",
     "PeriodicDynamicalDecoupling",
+    "FindBlockTrotterEvolution",
+    "LayerBlockOperators",
+    "ExpandBlockOperators",
+    "AddBarriersForGroupOfLayers",
 ]

@@ -21,13 +21,14 @@ from qiskit.circuit.library import PauliEvolutionGate
 from qiskit.opflow import PauliSumOp
 from qiskit.providers.fake_provider import FakeKolkata
 from qiskit.providers.fake_provider import FakeWashington
-from qiskit.quantum_info import Operator
 from qiskit.transpiler import PassManager
 
 from qiskit_research.utils.circuit_layering import (
+    get_entanglement_map,
     ExpandBlockOperators,
     FindBlockTrotterEvolution,
     LayerBlockOperators,
+    AddBarriersForGroupOfLayers,
 )
 
 from qiskit_research.utils import (
@@ -189,12 +190,24 @@ class TestLayeredPauliGates(unittest.TestCase):
 
         backend = FakeKolkata()
         coupling_map = backend.configuration().coupling_map
+        # Can also give a list of "good" well-behaved qubits.
+        max_qubits = backend.configuration().num_qubits
+        initial_layout = range(max_qubits)
+        entanglement_map = get_entanglement_map(
+            coupling_map=coupling_map,
+            init_layout=initial_layout,
+            distance=0,
+            ent_map_index=0,
+        )
         qc_l = transpile(qc_fbte, coupling_map=coupling_map, seed_transpiler=12345)
 
         qc_layered = PassManager(
             [
-                LayerBlockOperators(block_ops=block_ops, coupling_map=coupling_map),
+                LayerBlockOperators(
+                    block_ops=block_ops, entanglement_map=entanglement_map
+                ),
                 ExpandBlockOperators(block_ops=block_ops),
+                AddBarriersForGroupOfLayers(entanglement_map=entanglement_map),
             ]
         ).run(qc_l)
 

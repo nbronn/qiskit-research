@@ -17,11 +17,47 @@ from qiskit.circuit.library import PauliEvolutionGate, RXXGate, RYYGate, RZZGate
 from qiskit.transpiler import CouplingMap, TransformationPass
 from qiskit.dagcircuit import DAGCircuit, DAGOpNode
 from qiskit.quantum_info import Pauli
-
+from qiskit.exceptions import QiskitError
 from qiskit_research.utils.backend import GetEntanglingMapFromInitLayout
 
 import numpy as np
 from typing import List, Tuple
+
+
+def get_entanglement_map(
+    coupling_map: List[List],
+    init_layout: List[int] = None,
+    distance: int = 0,
+    ent_map_index: int = 0,
+) -> List[List[int]]:
+    """Returns ONE grouping of entanglement_map for given distance between coupling pairs and
+    coupling_map.
+
+    Args:
+        coupling_map (List[List]): From a backend.
+        init_layout (List[int], optional): You can select the qubits you want to use
+                                or take all of them. Defaults to None.
+        distance (int, optional): The distance between coupling pairs. Defaults to 0.
+        ent_map_index (int, optional): There can be multiple groupings of entanglement maps.
+                                Defaults to 0th index of solution set.
+
+    Returns:
+        List[List[int]]: The ent_map_index of all the entanglement maps.
+    """
+    if init_layout is None:
+        init_layout = range(max(max(coupling_map)) - min(min(coupling_map)) + 1)
+
+    (_, _, _, ent_maps) = GetEntanglingMapFromInitLayout(
+        coupling_map, init_layout, distance=distance
+    ).pairs_from_n_and_reduced_coupling_map()
+
+    print(f"Layering ent_map_index={ent_map_index} : {ent_maps[ent_map_index]}")
+
+    if ent_map_index < len(ent_maps):
+        return ent_maps[ent_map_index]
+    else:
+        # We should never be here, but just having a safety check to avoid a segv.
+        return None
 
 
 class FindBlockTrotterEvolution(TransformationPass):
@@ -92,23 +128,13 @@ class FindBlockTrotterEvolution(TransformationPass):
 class LayerBlockOperators(TransformationPass):
     def __init__(
         self,
+        entanglement_map: List[List[List]],
         block_ops: List[str] = None,
-        coupling_map: CouplingMap = None,
-        init_layout: List[List[int]] = None,
-        distance: int = 0,
     ):
         super().__init__()
         self._block_ops = block_ops
         self._block_str = "+".join(block_ops).lower()
-        self._coupling_map = coupling_map
-        self._distance = distance
-        if init_layout is not None:
-            self._init_layout = init_layout
-        else:
-            self._init_layout = range(
-                max(max(coupling_map)) - min(min(coupling_map)) + 1
-            )
-        self._ent_map = self._get_entanglement_map()
+        self._entanglement_map = entanglement_map
 
     def run(self, dag: DAGCircuit):
         for front_node in dag.front_layer():
@@ -124,23 +150,13 @@ class LayerBlockOperators(TransformationPass):
                     if node0.op.name == self._block_str:
                         self._layer_block_op_nodes(dag, node0, node1)
 
-    def _get_entanglement_map(self) -> List[List[int]]:
-        new_layers = GetEntanglingMapFromInitLayout(
-            self._coupling_map, self._init_layout, distance=self._distance
-        )
-        (_, _, _, ent_maps) = new_layers.pairs_from_n_and_reduced_coupling_map()
-
-        print(f"Layering: {ent_maps[0]}")
-        # TODO: return just ent_maps[0] for list of lists
-        return [[list(pair) for pair in layer] for layer in ent_maps[0]]
-
     @staticmethod
     def _get_pair_from_node(node):
         return [node.qargs[0].index, node.qargs[1].index]
 
     @staticmethod
-    def _get_layer_index(pair, ent_maps):
-        for lidx, ent_map in enumerate(ent_maps):
+    def _get_layer_index(pair, entanglement_maps):
+        for lidx, ent_map in enumerate(entanglement_maps):
             if pair in ent_map or list(reversed(pair)) in ent_map:
                 return lidx
 
@@ -161,9 +177,9 @@ class LayerBlockOperators(TransformationPass):
 
     def _layer_block_op_nodes(self, dag, node0, node1):
         pair0 = self._get_pair_from_node(node0)
-        lidx0 = self._get_layer_index(pair0, self._ent_map)
+        lidx0 = self._get_layer_index(pair0, self._entanglement_map)
         pair1 = self._get_pair_from_node(node1)
-        lidx1 = self._get_layer_index(pair1, self._ent_map)
+        lidx1 = self._get_layer_index(pair1, self._entanglement_map)
         # import pdb; pdb.set_trace()
         if lidx0 < lidx1:
             return dag
@@ -235,3 +251,27 @@ class ExpandBlockOperators(TransformationPass):
         dag.substitute_node_with_dag(node, mini_dag)
 
         return dag
+
+
+class AddBarriersForGroupOfLayers(TransformationPass):
+    def __init__(self, entanglement_map: list):
+        super().__init__()
+        self.dag = None
+        # Hold the intermediate and final result of editing the DAG
+        self.dag_with_barriers = None
+        # Will give the list of qubits that start the logic!!!!
+        self.front_layers = None
+        self.entanglement_map = entanglement_map
+
+        self.num_layers = None
+
+    def run(self, dag: DAGCircuit) -> DAGCircuit:
+        self.dag = dag
+        self.front_layers = self.dag.front_layer()
+        self.num_layers = len(self.entanglement_map)
+
+        # Return  dag while still testing.
+        return self.dag
+
+        # # Return updated dag.
+        # return self.dag_with_barriers
