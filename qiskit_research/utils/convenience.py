@@ -1,5 +1,3 @@
-# This code is part of Qiskit.
-#
 # (C) Copyright IBM 2022.
 #
 # This code is licensed under the Apache License, Version 2.0. You may
@@ -12,7 +10,7 @@
 
 """Convenience functions."""
 
-from typing import Any, Iterable, List, Optional, Union
+from typing import Any, Iterable, List, Optional, overload, Union
 
 from qiskit.circuit import QuantumCircuit
 from qiskit.circuit import Gate
@@ -31,7 +29,10 @@ from qiskit_research.utils import (
     pulse_attaching_passes,
     add_pulse_calibrations,
 )
-from qiskit_research.utils.dynamical_decoupling import periodic_dynamical_decoupling
+from qiskit_research.utils.dynamical_decoupling import (
+    periodic_dynamical_decoupling,
+    PulseMethod,
+)
 
 
 def add_dynamical_decoupling(
@@ -40,24 +41,49 @@ def add_dynamical_decoupling(
     dd_str: str,
     scheduler: BaseScheduler = ALAPScheduleAnalysis,
     add_pulse_cals: bool = False,
+    urdd_pulse_num: int = 4,
+    pulse_method: PulseMethod = PulseMethod.PHASESHIFT,
 ) -> Union[QuantumCircuit, List[QuantumCircuit], List[List[QuantumCircuit]]]:
     """Add dynamical decoupling sequences and calibrations to circuits.
 
     Adds dynamical decoupling sequences and the calibrations necessary
     to run them on an IBM backend.
+
+    Args:
+        circuits (Union[QuantumCircuit, List[QuantumCircuit], List[List[QuantumCircuit]]]):
+            input QuantumCircuit or sequences thereof.
+        backend (Backend): Backend to run on; gate timing is required for this method.
+        dd_str (str): String describing DD sequence to use.
+        scheduler (BaseScheduler, optional): Scheduler, defaults to ALAPScheduleAnalysis.
+        add_pulse_cals (bool, optional): Add Pulse calibrations for non-basis
+            gates? Defaults to False.
+        urdd_pulse_num (int, optional): URDD pulse number must be even and at least 4.
+            Defaults to 4.
+        pulse_method (Optional[str], optional): Pulse calibration method for URDD
+            sequences (if add_pulse cals). Defaults to "phase_shift".
+
+    Returns:
+        Union[QuantumCircuit, List[QuantumCircuit], List[List[QuantumCircuit]]]: Same
+            single or sequence type of QuantumCircuit, shceduled with DD sequences
+            inserted into idle times.
     """
+
     pass_manager = PassManager(
-        list(dynamical_decoupling_passes(backend, dd_str, scheduler))
+        list(
+            dynamical_decoupling_passes(
+                backend, dd_str, scheduler, urdd_pulse_num=urdd_pulse_num
+            )
+        )
     )
     if isinstance(circuits, QuantumCircuit) or isinstance(circuits[0], QuantumCircuit):
         circuits_dd = pass_manager.run(circuits)
         if add_pulse_cals:
-            add_pulse_calibrations(circuits_dd, backend)
+            add_pulse_calibrations(circuits_dd, backend, pulse_method=pulse_method)
     else:
         circuits_dd = [pass_manager.run(circs) for circs in circuits]
         if add_pulse_cals:
             for circs_dd in circuits_dd:
-                add_pulse_calibrations(circs_dd, backend)
+                add_pulse_calibrations(circs_dd, backend, pulse_method=pulse_method)
 
     return circuits_dd
 
@@ -140,13 +166,35 @@ def add_pauli_twirls(
     ]
 
 
+@overload
 def scale_cr_pulses(
-    circuits: Union[QuantumCircuit, List[QuantumCircuit]],
+    circuits: List[QuantumCircuit],
     backend: Backend,
     unroll_rzx_to_ecr: Optional[bool] = True,
     force_zz_matches: Optional[bool] = True,
     param_bind: Optional[dict] = None,
-) -> Union[QuantumCircuit, List[QuantumCircuit]]:
+) -> List[QuantumCircuit]:
+    ...
+
+
+@overload
+def scale_cr_pulses(
+    circuits: QuantumCircuit,
+    backend: Backend,
+    unroll_rzx_to_ecr: Optional[bool] = True,
+    force_zz_matches: Optional[bool] = True,
+    param_bind: Optional[dict] = None,
+) -> QuantumCircuit:
+    ...
+
+
+def scale_cr_pulses(
+    circuits,
+    backend,
+    unroll_rzx_to_ecr: Optional[bool] = True,
+    force_zz_matches: Optional[bool] = True,
+    param_bind: Optional[dict] = None,
+):
     """
     Scale circuits using Pulse scaling technique from
     http://arxiv.org/abs/2012.11660. If parameters are

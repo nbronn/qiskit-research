@@ -1,5 +1,3 @@
-# This code is part of Qiskit.
-#
 # (C) Copyright IBM 2022.
 #
 # This code is licensed under the Apache License, Version 2.0. You may
@@ -19,6 +17,7 @@ from qiskit.circuit import Parameter, QuantumCircuit
 from qiskit.circuit.library import CXGate
 from qiskit.quantum_info import Operator
 from qiskit_research.utils.convenience import add_pauli_twirls
+from qiskit_research.utils.gates import SECRGate
 from qiskit_research.utils.pauli_twirling import TWIRL_GATES
 
 
@@ -55,6 +54,13 @@ class TestPauliTwirling(unittest.TestCase):
         circuit.rzz(phi, 1, 2)
         circuit.h(2)
         circuit.cx(0, 1)
+
+        circuit.h(1)
+        circuit.append(SECRGate(theta), [0, 1])
+        circuit.h(0)
+        circuit.append(SECRGate(phi), [2, 0])
+        circuit.h(2)
+
         twirled_circs = add_pauli_twirls(circuit, num_twirled_circuits=5)
         more_twirled_circs = add_pauli_twirls(
             [circuit], num_twirled_circuits=5, seed=1234
