@@ -165,7 +165,7 @@ class TestEntanglingMap(unittest.TestCase):
         )
 
 
-# TODO: ceate data for different params & distances
+# TODO: create data for different params & distances
 class TestLayeredPauliGates(unittest.TestCase):
     """_summary_
 

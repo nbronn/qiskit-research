@@ -22,6 +22,7 @@ from qiskit_research.utils.backend import GetEntanglingMapFromInitLayout
 
 import numpy as np
 from typing import List, Tuple
+from collections import defaultdict
 
 
 def get_entanglement_map(
@@ -51,9 +52,9 @@ def get_entanglement_map(
         coupling_map, init_layout, distance=distance
     ).pairs_from_n_and_reduced_coupling_map()
 
-    print(f"Layering ent_map_index={ent_map_index} : {ent_maps[ent_map_index]}")
+    print(f"Layering ent_map_index={ent_map_index} : \n{ent_maps[ent_map_index]}")
 
-    if ent_map_index < len(ent_maps):
+    if ent_map_index >= 0 and ent_map_index < len(ent_maps):
         return ent_maps[ent_map_index]
     else:
         # We should never be here, but just having a safety check to avoid a segv.
@@ -151,11 +152,11 @@ class LayerBlockOperators(TransformationPass):
                         self._layer_block_op_nodes(dag, node0, node1)
 
     @staticmethod
-    def _get_pair_from_node(node):
+    def get_pair_from_node(node):
         return [node.qargs[0].index, node.qargs[1].index]
 
     @staticmethod
-    def _get_layer_index(pair, entanglement_maps):
+    def get_layer_index(pair, entanglement_maps):
         for lidx, ent_map in enumerate(entanglement_maps):
             if pair in ent_map or list(reversed(pair)) in ent_map:
                 return lidx
@@ -176,10 +177,10 @@ class LayerBlockOperators(TransformationPass):
         return (q0, q1, q2)
 
     def _layer_block_op_nodes(self, dag, node0, node1):
-        pair0 = self._get_pair_from_node(node0)
-        lidx0 = self._get_layer_index(pair0, self._entanglement_map)
-        pair1 = self._get_pair_from_node(node1)
-        lidx1 = self._get_layer_index(pair1, self._entanglement_map)
+        pair0 = self.get_pair_from_node(node0)
+        lidx0 = self.get_layer_index(pair0, self._entanglement_map)
+        pair1 = self.get_pair_from_node(node1)
+        lidx1 = self.get_layer_index(pair1, self._entanglement_map)
         # import pdb; pdb.set_trace()
         if lidx0 < lidx1:
             return dag
@@ -270,8 +271,46 @@ class AddBarriersForGroupOfLayers(TransformationPass):
         self.front_layers = self.dag.front_layer()
         self.num_layers = len(self.entanglement_map)
 
-        # Return  dag while still testing.
+        self._add_barriers(self.front_layers)
+
+        # # Return  dag while still testing.
         return self.dag
 
-        # # Return updated dag.
+        # Return updated dag.
         # return self.dag_with_barriers
+
+    def _add_barriers(self, op_nodes: DAGOpNode):
+        # Update dag_with_barriers,
+        # end of recursive logic should have finished dag_with_barriers.
+        # Start with list of nodes at start of logic or after a barrier.
+        pairs_opnode, pair_index = self._get_pairs_from_op_nodes(op_nodes)
+
+        # For all the dags within one layer which is within pair_index,
+        # go through then until they are no longer in a single layer.
+        # for start_dag
+        # for i, (a, b) in enumerate(tuple_list):
+
+        # When the each entry is traversed, then make a new pair_index and
+        # restart loop
+        a = 5
+
+    def _get_pairs_from_op_nodes(self, op_nodes: DAGOpNode) -> Tuple[list, dict]:
+        all_pairs = []
+        pair_index_dict = defaultdict(list)
+        pair_index = list()
+
+        index_of_layers = set()
+
+        for a_op_node in op_nodes:
+            a_pair = LayerBlockOperators.get_pair_from_node(a_op_node)
+            map_index = LayerBlockOperators.get_layer_index(
+                a_pair, self.entanglement_map
+            )
+            all_pairs.append(a_pair)
+            pair_index_dict[map_index].append(a_op_node)
+            index_of_layers.add(map_index)
+
+        for map_index, op_nodes in enumerate(pair_index_dict):
+            pair_index.append((map_index, op_nodes))
+
+        return (all_pairs, pair_index)

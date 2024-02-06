@@ -511,7 +511,7 @@ class GetEntanglingMapFromInitLayout(PopulateCouplingMapDictAndMatrixDict):
                                 created with different start qubits.
 
             Returns:
-            list: List of Tuples which are a pair that are n away from each other.
+            list: List of lists which are a pair that are n away from each other.
         """
         a_pair = [first_qubit, second_qubit]
         a_pair_flipped = [second_qubit, first_qubit]
