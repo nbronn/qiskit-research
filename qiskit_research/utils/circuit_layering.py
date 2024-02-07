@@ -16,8 +16,8 @@ from qiskit.circuit import Instruction, QuantumRegister
 from qiskit.circuit.library import PauliEvolutionGate, RXXGate, RYYGate, RZZGate
 from qiskit.transpiler import CouplingMap, TransformationPass
 from qiskit.dagcircuit import DAGCircuit, DAGOpNode
-from qiskit.quantum_info import Pauli
 from qiskit.exceptions import QiskitError
+from qiskit.quantum_info import Pauli
 from qiskit_research.utils.backend import GetEntanglingMapFromInitLayout
 
 import numpy as np
@@ -152,8 +152,9 @@ class LayerBlockOperators(TransformationPass):
                         self._layer_block_op_nodes(dag, node0, node1)
 
     @staticmethod
-    def get_pair_from_node(node):
-        return [node.qargs[0].index, node.qargs[1].index]
+    def get_pair_from_node(dag, node):
+        # return [node.qargs[0].index, node.qargs[1].index]
+        return [dag.find_bit(node.qargs[0]).index, dag.find_bit(node.qargs[1]).index]
 
     @staticmethod
     def get_layer_index(pair, entanglement_maps):
@@ -177,11 +178,10 @@ class LayerBlockOperators(TransformationPass):
         return (q0, q1, q2)
 
     def _layer_block_op_nodes(self, dag, node0, node1):
-        pair0 = self.get_pair_from_node(node0)
+        pair0 = self.get_pair_from_node(dag, node0)
         lidx0 = self.get_layer_index(pair0, self._entanglement_map)
-        pair1 = self.get_pair_from_node(node1)
+        pair1 = self.get_pair_from_node(dag, node1)
         lidx1 = self.get_layer_index(pair1, self._entanglement_map)
-        # import pdb; pdb.set_trace()
         if lidx0 < lidx1:
             return dag
         elif lidx1 < lidx0:
@@ -194,7 +194,7 @@ class LayerBlockOperators(TransformationPass):
             qargs = list(
                 set(node0.qargs + node1.qargs)
             )  # should share exactly one qubit
-            qreg = qargs[0].register
+            qreg = dag.find_bit(qargs[0]).registers[0][0]
 
             mini_dag.apply_operation_back(node1.op, [qr[2], qr[1]])
             mini_dag.apply_operation_back(node0.op, [qr[0], qr[1]])
@@ -271,7 +271,7 @@ class AddBarriersForGroupOfLayers(TransformationPass):
         self.front_layers = self.dag.front_layer()
         self.num_layers = len(self.entanglement_map)
 
-        self._add_barriers(self.front_layers)
+        self._add_barriers(dag, self.front_layers)
 
         # # Return  dag while still testing.
         return self.dag
@@ -279,11 +279,11 @@ class AddBarriersForGroupOfLayers(TransformationPass):
         # Return updated dag.
         # return self.dag_with_barriers
 
-    def _add_barriers(self, op_nodes: DAGOpNode):
+    def _add_barriers(self, dag: DAGCircuit, op_nodes: DAGOpNode):
         # Update dag_with_barriers,
         # end of recursive logic should have finished dag_with_barriers.
         # Start with list of nodes at start of logic or after a barrier.
-        pairs_opnode, pair_index = self._get_pairs_from_op_nodes(op_nodes)
+        pairs_opnode, pair_index = self._get_pairs_from_op_nodes(dag, op_nodes)
 
         # For all the dags within one layer which is within pair_index,
         # go through then until they are no longer in a single layer.
@@ -294,7 +294,9 @@ class AddBarriersForGroupOfLayers(TransformationPass):
         # restart loop
         a = 5
 
-    def _get_pairs_from_op_nodes(self, op_nodes: DAGOpNode) -> Tuple[list, dict]:
+    def _get_pairs_from_op_nodes(
+        self, dag: DAGCircuit, op_nodes: DAGOpNode
+    ) -> Tuple[list, dict]:
         all_pairs = []
         pair_index_dict = defaultdict(list)
         pair_index = list()
@@ -302,7 +304,7 @@ class AddBarriersForGroupOfLayers(TransformationPass):
         index_of_layers = set()
 
         for a_op_node in op_nodes:
-            a_pair = LayerBlockOperators.get_pair_from_node(a_op_node)
+            a_pair = LayerBlockOperators.get_pair_from_node(dag, a_op_node)
             map_index = LayerBlockOperators.get_layer_index(
                 a_pair, self.entanglement_map
             )
