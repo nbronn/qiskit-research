@@ -91,14 +91,21 @@ class FindBlockTrotterEvolution(TransformationPass):
         for pauli, coeff in zip(node.op.operator.paulis, node.op.operator.coeffs):
             required_paulis[self._pauli_to_edge(pauli)][pauli] = coeff
         for edge, pauli_dict in required_paulis.items():
-            params = np.zeros(len(self._block_ops), dtype=object)
+            params = np.array([], dtype=object)
+            block_label = ""
             for pauli, coeff in pauli_dict.items():
                 qubits = [dag.qubits[edge[0]], dag.qubits[edge[1]]]
                 for pidx, pstr in enumerate(self._block_ops):
                     if pauli.to_label().replace("I", "") == pstr:
-                        params[pidx] = node.op.time * coeff
+                        if not np.isclose(coeff, 0.0):
+                            params = np.append(params, [node.op.time * coeff])
+                            if len(block_label):
+                                block_label += f"+{pstr.lower()}"
+                            else:
+                                block_label += f"{pstr.lower()}"
+
             block_op = Instruction(
-                "xx+yy+zz", num_qubits=2, num_clbits=0, params=params
+                block_label, num_qubits=2, num_clbits=0, params=params
             )
             sub_dag.apply_operation_back(block_op, qubits)
 
