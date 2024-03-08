@@ -68,6 +68,7 @@ class FindBlockTrotterEvolution(TransformationPass):
     ):
         super().__init__()
         self._block_ops = block_ops
+        self._block_str = "+".join(block_ops).lower()
 
     def run(self, dag: DAGCircuit):
         for node in dag.op_nodes():  # let's take in PauliTrotterEvolutionGates to start
@@ -98,7 +99,7 @@ class FindBlockTrotterEvolution(TransformationPass):
                     if pauli.to_label().replace("I", "") == pstr:
                         params[pidx] = node.op.time * coeff
             block_op = Instruction(
-                "xx+yy+zz", num_qubits=2, num_clbits=0, params=params
+                self._block_str, num_qubits=2, num_clbits=0, params=params
             )
             sub_dag.apply_operation_back(block_op, qubits)
 
